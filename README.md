@@ -1,2 +1,2 @@
 # FoodUcate
-Know your Food betters
+Know your Food better
