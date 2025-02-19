@@ -4,13 +4,14 @@ from pymongo import MongoClient
 import pandas as pd
 from methods import *
 from models import login, signup
+from static.secret import API_KEY
 app = Flask(__name__)
 
 df = pd.read_csv(r"D:\FoodUcate\FoodUcate\backend\static\nutrition.csv")
 selected_columns = ["name", "serving_size", "calories", "total_fat", "protein", "carbohydrate", "fiber", "sodium", "cholestrol", "vitamin_a", "vitamin_b12", "vitamin_b6", "vitamin_c", "vitamin_d", "sugars"]
 
 #configuration of gemini API
-genai.configure(api_key="AIzaSyDg6u-euPuvPvNtJ9lQKxEJWNuI85OuRYo")
+genai.configure(api_key=API_KEY)
 @app.route('/getFoodDetails', methods=["GET"])
 def get_food_nutrients():
     # keyword -> food_name
