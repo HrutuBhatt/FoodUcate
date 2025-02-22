@@ -8,6 +8,8 @@ users = db["users"]
 nutrients = db["nutrients"]
 food_consumed = db["consumption"]
 
+
+
 def signup(username, password):
     # Check if user already exists
     if users.find_one({"username": username}):  
@@ -19,10 +21,12 @@ def signup(username, password):
     }
     users.insert_one(user)
     return jsonify({"message": "User created successfully"}), 200
-def login(username, password):
 
-    user = users.find_one({"username": username})  
-    if user and user["password"]== password:  
-        return jsonify({"message": "Login successful"}), 200
-    return jsonify({"error": "Invalid username or password"}), 401
+# def login(username, password):
 
+#     user = users.find_one({"username": username})  
+#     if user and user["password"]== password:  
+#         return jsonify({"message": "Login successful"}), 200
+#     return jsonify({"error": "Invalid username or password"}), 401
+
+# def add_nutrient(user_id, nutrient_name):
