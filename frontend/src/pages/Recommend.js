@@ -8,14 +8,13 @@ const DietRecommendation = () => {
         Height_cm: "",
         Disease_Type: "Hypertension",
         Severity: "Moderate",
-        Physical_Activity_Level: "Low",
+        Physical_Activity_Level: "Active",
         Daily_Caloric_Intake: "",
-        Cholesterol_mg_dL: "",
+        Cholesterol_mgdL: "",
         Blood_Pressure_mmHg: "",
-        Glucose_mg_dL: "",
+        Glucose_mgdL: "",
         Preferred_Cuisine: "Mexican",
         Weekly_Exercise_Hours: "",
-        Adherence_to_Diet_Plan: ""
     });
     const [prediction, setPrediction] = useState("");
 
@@ -28,10 +27,15 @@ const DietRecommendation = () => {
         try {
             const response = await await fetch("http://localhost:5000/predict",{
                 method : 'POST',
-                body : formData
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(formData)
               
             });
-            setPrediction(response.data.prediction);
+            const result = await response.json();
+            console.log("Diet Recommendation:", result.prediction);
+            setPrediction(result.prediction)
         } catch (error) {
             console.error("Error fetching prediction", error);
         }
@@ -73,6 +77,15 @@ const DietRecommendation = () => {
                     <select className="form-select" name="Severity" value={formData.Severity} onChange={handleChange}>
                         <option value="Moderate">Moderate</option>
                         <option value="High">High</option>
+                        <option value="Mild">Mild</option>
+                    </select>
+                </div>
+                <div className="col-md-6">
+                    <label className="form-label">Physical Activity Level:</label>
+                    <select className="form-select" name="Physical_Activity_Level" value={formData.Physical_Activity_Level} onChange={handleChange}>
+                        <option value="Sedentary">Sedentary</option>
+                        <option value="Moderate">Moderate</option>
+                        <option value="Active">Active</option>
                     </select>
                 </div>
                 <div className="col-md-6">
@@ -80,7 +93,8 @@ const DietRecommendation = () => {
                     <select className="form-select" name="Preferred_Cuisine" value={formData.Preferred_Cuisine} onChange={handleChange}>
                         <option value="Mexican">Mexican</option>
                         <option value="Indian">Indian</option>
-                        <option value="Mediterranean">Mediterranean</option>
+                        <option value="Italian">Italian</option>
+                        <option value="Chinese">Chinese</option>
                     </select>
                 </div>
                 <div className="col-md-6">
@@ -89,7 +103,7 @@ const DietRecommendation = () => {
                 </div>
                 <div className="col-md-6">
                     <label className="form-label">Cholesterol (mg/dL):</label>
-                    <input type="number" className="form-control" name="Cholesterol_mg_dL" value={formData.Cholesterol_mg_dL} onChange={handleChange} required />
+                    <input type="number" className="form-control" name="Cholesterol_mgdL" value={formData.Cholesterol_mgdL} onChange={handleChange} required />
                 </div>
                 <div className="col-md-6">
                     <label className="form-label">Blood Pressure (mmHg):</label>
@@ -97,7 +111,7 @@ const DietRecommendation = () => {
                 </div>
                 <div className="col-md-6">
                     <label className="form-label">Glucose (mg/dL):</label>
-                    <input type="number" className="form-control" name="Glucose_mg_dL" value={formData.Glucose_mg_dL} onChange={handleChange} required />
+                    <input type="number" className="form-control" name="Glucose_mgdL" value={formData.Glucose_mgdL} onChange={handleChange} required />
                 </div>
                 <div className="col-md-6">
                     <label className="form-label">Weekly Exercise Hours:</label>

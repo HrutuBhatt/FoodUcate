@@ -9,7 +9,7 @@ import DietRecommendation from './pages/Recommend';
 import PrivateRoute from './auth/PrivateRoute';
 import Login from './pages/Login';
 import Signup from './pages/SignUp';
-import NutritionTracker from './pages/NutritionTracker';
+import NutrientTracker from './pages/NutritionTracker';
 function App() {
   return (
     <>
@@ -24,7 +24,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route element={<PrivateRoute />}>
-            <Route path="/track" element={<NutritionTracker />} />
+            <Route path="/track" element={<NutrientTracker />} />
           </Route>
 
         </Routes>

@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_apscheduler import APScheduler
 from PIL import Image
 import google.generativeai as genai
 from io import BytesIO
@@ -15,6 +16,7 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required, ge
 from pymongo import MongoClient
 from bson import ObjectId
 from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
 
 import numpy as np
 app = Flask(__name__)
@@ -163,67 +165,80 @@ def upload_image():
 
     return jsonify(format_responses(food_info))
 
-@app.route('/signup', methods=['POST'])
-def signup_route():
-    data = request.json
-    return signup(data["username"], data["password"])
 
-@app.route('/login', methods=['POST'])
-def login_route():
-    data = request.json
-    print(data["username"], data["password"])
-    username = data["username"]
-    password = data["password"]
-    user = users.find_one({"username": username})  
-    if user and user["password"]== password:  
-        return jsonify({"message": "Login successful"}), 200
-    return jsonify({"error": "Invalid username or password"}), 401
-
-dt_classifier = joblib.load(r"D:\FoodUcate\FoodUcate\backend\static\pkl\diet_recommendation_model.pkl")
-le_dict = joblib.load(r"D:\FoodUcate\FoodUcate\backend\static\pkl\label_encoders.pkl")
+dt_classifier = joblib.load(r"D:\FoodUcate\FoodUcate\backend\static\pkl\recommendation_model.pkl")
+le_dict = joblib.load(r"D:\FoodUcate\FoodUcate\backend\static\pkl\encoders.pkl")
 scaler = joblib.load(r"D:\FoodUcate\FoodUcate\backend\static\pkl\scaler.pkl")
+
+# Define feature columns
+categorical_cols = ["Gender", "Physical_Activity_Level", "Disease_Type", "Severity", "Preferred_Cuisine"]
+numerical_cols = ["Age", "Weight_kg", "Height_cm", "Daily_Caloric_Intake", 
+                  "Cholesterol_mgdL", "Blood_Pressure_mmHg", "Glucose_mgdL", 
+                  "Weekly_Exercise_Hours"]
 feature_columns = [
     "Age", "Gender", "Weight_kg", "Height_cm", "Disease_Type", "Severity",
-    "Physical_Activity_Level", "Daily_Caloric_Intake", "Cholesterol_mg/dL",
-    "Blood_Pressure_mmHg", "Glucose_mg/dL", "Preferred_Cuisine", "Weekly_Exercise_Hours",
-    "Adherence_to_Diet_Plan"
+    "Physical_Activity_Level", "Daily_Caloric_Intake", "Cholesterol_mgdL",
+    "Blood_Pressure_mmHg", "Glucose_mgdL", "Preferred_Cuisine", "Weekly_Exercise_Hours",
 ]
 
 #Diet Recommendation function
 
-@app.route('/predict', methods=['POST'])
+def predict_diet_recommendation(input_data):
+    """
+    Predicts the diet recommendation based on input features.
+    """
+    missing_features = [f for f in feature_columns if f not in input_data]
+    if missing_features:
+        raise ValueError(f"Missing features: {missing_features}")
+
+    # Encode categorical values
+    encoded_input = input_data.copy()
+    for col in categorical_cols:
+        if col in encoded_input:
+            encoded_input[col] = le_dict[col].transform([encoded_input[col]])[0]
+    # Extract and scale numerical values
+    numerical_values = np.array([[encoded_input[feature] for feature in numerical_cols]])
+    scaled_numerical_values = scaler.transform(numerical_values)
+
+    # Construct final feature array
+    final_features = []
+    for feature in feature_columns:
+        if feature in numerical_cols:
+            final_features.append(scaled_numerical_values[0][numerical_cols.index(feature)])
+        else:
+            final_features.append(encoded_input[feature])
+
+    # Convert to NumPy array and reshape for prediction
+    final_features = np.array(final_features).reshape(1, -1)
+
+    # Predict using the trained model
+    encoded_prediction = dt_classifier.predict(final_features)[0]
+
+    # Decode the predicted value
+    diet_recommendation = le_dict['Diet_Recommendation'].inverse_transform([encoded_prediction])[0]
+
+    return diet_recommendation
+
+@app.route("/predict", methods=["POST"])
 def predict():
     try:
-        # print("Hello")
-        data = request.json  # Receive data from frontend
-        
-        # Convert categorical inputs using stored encoders
-        for col in le_dict.keys():
-            if col in data:
-                try:
-                    data[col] = le_dict[col].transform([data[col]])[0]
-                except ValueError:
-                    return jsonify({"error": f"Invalid value for {col}: {data[col]}"})
-        
-        # Convert data into numpy array
-        input_data = np.array([data[col] for col in feature_columns]).reshape(1, -1)
+        # Get JSON data from request
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid input, no JSON received"}), 400
 
-        # Scale numerical features
-        input_data = scaler.transform(input_data)
-
-        # Predict diet recommendation
-        prediction_encoded = dt_classifier.predict(input_data)[0]
-        prediction = le_dict["Diet_Recommendation"].inverse_transform([prediction_encoded])[0]
+        print(data)
+        # Get prediction
+        prediction = predict_diet_recommendation(data)
         print(prediction)
         return jsonify({"prediction": prediction})
 
     except Exception as e:
-        return jsonify({"error": str(e)}) 
-    
-
+        print(f"Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 ##DATABASE OPERATIONS
-@app.route("/register", methods=["POST"])
+@app.route("/signup", methods=["POST"])
 def register():
     data = request.json
     username = data.get("username")
@@ -244,6 +259,7 @@ def login():
 
     if user and bcrypt.check_password_hash(user["password"], data.get("password")):
         access_token = create_access_token(identity=str(user["_id"]))
+        print(access_token)
         return jsonify({"token": access_token, "user_id": str(user["_id"])}), 200
 
     return jsonify({"error": "Invalid credentials"}), 401
@@ -259,7 +275,7 @@ def add_nutrient():
     data = request.json
     nutrient_name = data.get("nutrient_name")
     max_amount = data.get("max_amount")
-
+    print(user_id, nutrient_name )
     nutrient_id = nutrients.insert_one({
         "user_id": ObjectId(user_id),
         "nutrient_name": nutrient_name,
@@ -274,8 +290,14 @@ def add_nutrient():
 @app.route("/nutrients", methods=["GET"])
 @jwt_required()
 def get_nutrients():
-    user_id = get_jwt_identity()
-    user_nutrients = list(nutrients.find({"user_id": ObjectId(user_id)}, {"_id": 0}))
+    user_id = get_jwt_identity()  
+    user_nutrients = list(nutrients.find({"user_id": ObjectId(user_id)}))
+    
+    # Convert ObjectId fields to string
+    for nutrient in user_nutrients:
+        nutrient["_id"] = str(nutrient["_id"])  # Convert ObjectId to string
+        nutrient["user_id"] = str(nutrient["user_id"])
+    print(user_nutrients)
     return jsonify(user_nutrients), 200
 
 
@@ -285,28 +307,106 @@ def get_nutrients():
 @app.route("/add_food", methods=["POST"])
 @jwt_required()
 def add_food():
+    print("hello")
     user_id = get_jwt_identity()
     data = request.json
-    food_name = data.get("food_name")
-    quantity = data.get("quantity")
+    food_name = data.get("food_name").lower()  # Convert input to lowercase
+    quantity = data.get("quantity") / 100  # Convert to per 100g basis
 
+    print(user_id, quantity)
+    # Check if food is in the dataset
+    results = df[df["name"].str.contains(food_name, case=False, na=False)][selected_columns]
+
+    if results.empty:
+        return jsonify({"error": "Food not found in database"}), 400
+
+    print(results.iloc[0])
+    # Get food nutrient details and scale based on quantity
+    nutrients_info = results.iloc[0]
+   
+
+    print(nutrients_info)
+    # Update user’s nutrient intake
+    def extract_numeric(value):
+        """Extracts the numeric part from a string and converts it to float."""
+        if isinstance(value, (int, float)):  # Already a number
+            return value
+        
+        match = re.search(r"[-+]?\d*\.?\d+", str(value))  # Extract numeric part
+        return float(match.group()) if match else 0  # Convert to float or return 0
+
+    # Create scaled_nutrients, skipping non-numeric values
+    scaled_nutrients = {
+        key: extract_numeric(value) * quantity 
+        for key, value in nutrients_info.items()
+        if extract_numeric(value) != 0  # Skip non-numeric values
+    }
+
+    print(scaled_nutrients)
+
+  
+    for nutrient, value in scaled_nutrients.items():
+        if isinstance(value, (int, float)):
+            nutrients.update_one(
+                {"user_id": ObjectId(user_id), "nutrient_name": nutrient},
+                {"$inc": {"curr_amount": value}}
+            )
+
+    # Store food entry
     food_id = food_consumed.insert_one({
         "user_id": ObjectId(user_id),
         "food_name": food_name,
-        "quantity": quantity,
+        "quantity": quantity * 100,
         "date": datetime.utcnow()
     }).inserted_id
 
-    return jsonify({"message": "Food entry added", "food_id": str(food_id)}), 201
+    return jsonify({
+        "message": "Food entry added and nutrients updated",
+        "food_id": str(food_id),
+        "updated_nutrients": scaled_nutrients
+    }), 201
 
 
 # Get User's Food Entries
 @app.route("/user_food", methods=["GET"])
 @jwt_required()
 def get_user_food():
-    user_id = get_jwt_identity()
-    foods = list(food_consumed.find({"user_id": ObjectId(user_id)}, {"_id": 0}))
+    user_id = get_jwt_identity()   
+    foods = list(food_consumed.find({"user_id": ObjectId(user_id)}))
+    # Convert ObjectId fields to string
+    for food in foods:
+        food["_id"] = str(food["_id"])  # Convert `_id` to string
+        food["user_id"] = str(food["user_id"])  # Convert `user_id` to string
+    
+    print(foods)  # Debugging output
+    
     return jsonify(foods), 200
+
+
+#cleanup tasks
+scheduler = APScheduler()
+def reset_nutrition_data():
+    """Deletes all food consumption data at midnight and resets current nutrient values."""
+    print("Resetting daily food consumption data...")
+
+    # Delete all food consumed entries for the day
+    today = datetime.utcnow().date()
+    
+    # Delete food consumed entries
+    food_consumed.delete_many({"date": {"$lt": datetime(today.year, today.month, today.day)}})
+    
+    # Reset current nutrient values to 0
+    nutrients.update_many({}, {"$set": {"curr_amount": 0}})
+    
+    print("Daily reset completed.")
+
+
+# Schedule job to run daily at midnight
+scheduler.add_job(id="reset_job", func=reset_nutrition_data, trigger="cron", hour=0, minute=0)
+
+# Start the scheduler
+scheduler.init_app(app)
+scheduler.start()
 
 if __name__ == "__main__":
     app.run(debug=True)
